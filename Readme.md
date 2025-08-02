@@ -1,4 +1,4 @@
-# MeteorClient Dual Project
+# Soul
 
 This repository contains two branches with separate purposes:
 
