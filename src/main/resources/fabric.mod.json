@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "soul",
+  "version": "${version}",
+  "name": "Soul Addon",
+  "description": "Soul - the ultimate meteor client addon for DonutSMP",
+  "authors": [
+    "Kypulse"
+  ],
+  "contact": {
+    "discord": "https://discord.gg/a9AaQsEc9P"
+  },
+  "icon": "assets/template/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "meteor": [
+      "info.soul.addon.SoulAddon"
+    ]
+},
+
+  "mixins": [
+  ],
+  "custom": {
+    "meteor-client:color": "225,25,25"
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": ["${mc_version}"],
+    "meteor-client": "*"
+  }
+}
