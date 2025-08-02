@@ -2,14 +2,11 @@
 
 This repository contains two branches with separate purposes:
 
-- **`addon` branch** – A custom Meteor Client addon with various modules.
-- **`client` branch** – A full skid (modified build) of Meteor Client with integrated features and tweaks.
+- **`addon`** – A custom Meteor Client addon for donutsmp with various modules ranging from cpvp to player detection enhancements.
 
 ---
 
 ## 📂 Branch Overview
-
-### `addon` Branch
 
 A standalone **Meteor Client Addon** designed for use with the official Meteor Client. Includes advanced modules such as:
 
