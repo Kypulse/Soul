@@ -31,7 +31,7 @@ public class PanicSell extends Module {
     private int ticksSinceGUI = 0;
 
     public PanicSell() {
-        super(SoulAddon.CATEGORY, "panic-sell", "Moves the selected item to hotbar slot 4, sells it via /ah, and confirms.");
+        super(SoulAddon.CATEGORY, "AhPanic", "Auto sells item on ah for 1b using keybinds");
     }
 
     @Override
