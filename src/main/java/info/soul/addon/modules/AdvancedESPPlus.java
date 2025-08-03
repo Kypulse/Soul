@@ -1,6 +1,8 @@
 package info.soul.addon.modules;
 
 import info.soul.addon.SoulAddon;
+import meteordevelopment.meteorclient.events.entity.EntityAddedEvent;
+import meteordevelopment.meteorclient.events.entity.EntityRemovedEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.BlockUpdateEvent;
 import meteordevelopment.meteorclient.events.world.ChunkDataEvent;
@@ -8,6 +10,7 @@ import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
@@ -18,10 +21,16 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.KelpBlock;
 import net.minecraft.block.KelpPlantBlock;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.passive.TraderLlamaEntity;
 import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.entity.passive.WanderingTraderEntity;
 import net.minecraft.entity.mob.ZombieVillagerEntity;
 import net.minecraft.item.Items;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
@@ -48,6 +57,7 @@ public class AdvancedESPPlus extends Module {
     private final SettingGroup sgVillager = settings.createGroup("Villager ESP");
     private final SettingGroup sgVine = settings.createGroup("Vine ESP");
     private final SettingGroup sgStone = settings.createGroup("Stone ESP");
+    private final SettingGroup sgWanderingTrader = settings.createGroup("Wandering Trader ESP");
     private final SettingGroup sgWebhook = settings.createGroup("Webhook");
     private final SettingGroup sgThreading = settings.createGroup("Threading");
 
@@ -210,6 +220,41 @@ public class AdvancedESPPlus extends Module {
         .visible(enableStone::get)
         .build());
 
+    // Wandering Trader ESP Settings
+    private final Setting<Boolean> enableWanderingTrader = sgWanderingTrader.add(new BoolSetting.Builder()
+        .name("enable-wandering-trader-esp")
+        .description("Enable wandering trader and trader llama detection")
+        .defaultValue(true)
+        .build());
+
+    private final Setting<Boolean> traderSoundNotification = sgWanderingTrader.add(new BoolSetting.Builder()
+        .name("trader-sound-notification")
+        .description("Plays a sound when a wandering trader is detected")
+        .defaultValue(true)
+        .visible(enableWanderingTrader::get)
+        .build());
+
+    private final Setting<SettingColor> traderTracerColor = sgWanderingTrader.add(new ColorSetting.Builder()
+        .name("trader-tracer-color")
+        .description("The color of the tracer to wandering traders")
+        .defaultValue(new SettingColor(0, 255, 255, 127))
+        .visible(enableWanderingTrader::get)
+        .build());
+
+    private final Setting<SettingColor> llamaTracerColor = sgWanderingTrader.add(new ColorSetting.Builder()
+        .name("llama-tracer-color")
+        .description("The color of the tracer to trader llamas")
+        .defaultValue(new SettingColor(255, 255, 0, 127))
+        .visible(enableWanderingTrader::get)
+        .build());
+
+    private final Setting<Boolean> traderChat = sgWanderingTrader.add(new BoolSetting.Builder()
+        .name("trader-chat")
+        .description("Announce wandering trader detections in chat")
+        .defaultValue(true)
+        .visible(enableWanderingTrader::get)
+        .build());
+
     // Webhook Settings
     private final Setting<Boolean> enableWebhook = sgWebhook.add(new BoolSetting.Builder()
         .name("enable-webhook")
@@ -257,6 +302,11 @@ public class AdvancedESPPlus extends Module {
     private final Set<BlockPos> vineBottoms = ConcurrentHashMap.newKeySet();
     private final Set<BlockPos> detectedStoneBlocks = Collections.synchronizedSet(new HashSet<>());
 
+    // Wandering Trader data
+    private final Set<Integer> detectedTraders = Collections.synchronizedSet(new HashSet<>());
+    private final Set<Integer> detectedLlamas = Collections.synchronizedSet(new HashSet<>());
+    private boolean hasNotifiedTrader = false;
+
     private ExecutorService threadPool;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -276,7 +326,7 @@ public class AdvancedESPPlus extends Module {
     );
 
     public AdvancedESPPlus() {
-        super(SoulAddon.CATEGORY, "AdvancedESP+", "Combined ESP module with kelp, villager, vine, and stone detection.");
+        super(SoulAddon.CATEGORY, "AdvancedESP+", "ESP for Vines Villagers Kelp Stone and Wandering Traders");
     }
 
     @Override
@@ -293,6 +343,20 @@ public class AdvancedESPPlus extends Module {
             detectedVillagers.clear();
             vineBottoms.clear();
             detectedStoneBlocks.clear();
+            detectedTraders.clear();
+            detectedLlamas.clear();
+            hasNotifiedTrader = false;
+
+            // Check for existing wandering traders
+            if (enableWanderingTrader.get() && mc.world != null) {
+                for (Entity entity : mc.world.getEntities()) {
+                    if (entity instanceof WanderingTraderEntity) {
+                        handleTraderAdded(entity);
+                    } else if (entity instanceof TraderLlamaEntity) {
+                        handleLlamaAdded(entity);
+                    }
+                }
+            }
 
             // Scan all loaded chunks
             for (Chunk chunk : Utils.chunks()) {
@@ -334,12 +398,43 @@ public class AdvancedESPPlus extends Module {
         detectedVillagers.clear();
         vineBottoms.clear();
         detectedStoneBlocks.clear();
+        detectedTraders.clear();
+        detectedLlamas.clear();
+        hasNotifiedTrader = false;
+    }
+
+    @EventHandler
+    private void onEntityAdded(EntityAddedEvent event) {
+        if (!enableWanderingTrader.get()) return;
+
+        if (event.entity instanceof WanderingTraderEntity) {
+            handleTraderAdded(event.entity);
+        } else if (event.entity instanceof TraderLlamaEntity) {
+            handleLlamaAdded(event.entity);
+        }
+    }
+
+    @EventHandler
+    private void onEntityRemoved(EntityRemovedEvent event) {
+        if (!enableWanderingTrader.get()) return;
+
+        if (event.entity instanceof WanderingTraderEntity) {
+            detectedTraders.remove(event.entity.getId());
+            if (detectedTraders.isEmpty() && detectedLlamas.isEmpty()) {
+                hasNotifiedTrader = false;
+            }
+        } else if (event.entity instanceof TraderLlamaEntity) {
+            detectedLlamas.remove(event.entity.getId());
+            if (detectedTraders.isEmpty() && detectedLlamas.isEmpty()) {
+                hasNotifiedTrader = false;
+            }
+        }
     }
 
     @EventHandler
     private void onChunkLoad(ChunkDataEvent event) {
         if (!isActive() || event.chunk() == null) return;
-        
+
         try {
             if (useThreading.get() && threadPool != null && !threadPool.isShutdown()) {
                 threadPool.submit(() -> {
@@ -367,9 +462,64 @@ public class AdvancedESPPlus extends Module {
         }
     }
 
+    private void handleTraderAdded(Entity trader) {
+        detectedTraders.add(trader.getId());
+
+        if (!hasNotifiedTrader) {
+            notifyTraderFound(trader);
+            hasNotifiedTrader = true;
+        }
+    }
+
+    private void handleLlamaAdded(Entity llama) {
+        detectedLlamas.add(llama.getId());
+
+        // If we haven't notified yet and there's no trader detected, notify about the llama
+        if (!hasNotifiedTrader && detectedTraders.isEmpty()) {
+            notifyLlamaFound(llama);
+            hasNotifiedTrader = true;
+        }
+    }
+
+    private void notifyTraderFound(Entity trader) {
+        if (traderChat.get()) {
+            ChatUtils.sendMsg(Text.literal("")
+                .append(Text.literal("Wandering Trader").formatted(Formatting.AQUA))
+                .append(Text.literal(" found at ").formatted(Formatting.GRAY))
+                .append(Text.literal(String.format("[%d, %d, %d]",
+                    (int)trader.getX(),
+                    (int)trader.getY(),
+                    (int)trader.getZ())).formatted(Formatting.WHITE))
+            );
+        }
+
+        if (traderSoundNotification.get() && mc.world != null && mc.player != null) {
+            mc.world.playSoundFromEntity(mc.player, mc.player, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP,
+                SoundCategory.AMBIENT, 3.0F, 1.0F);
+        }
+    }
+
+    private void notifyLlamaFound(Entity llama) {
+        if (traderChat.get()) {
+            ChatUtils.sendMsg(Text.literal("")
+                .append(Text.literal("Trader Llama").formatted(Formatting.YELLOW))
+                .append(Text.literal(" found at ").formatted(Formatting.GRAY))
+                .append(Text.literal(String.format("[%d, %d, %d]",
+                    (int)llama.getX(),
+                    (int)llama.getY(),
+                    (int)llama.getZ())).formatted(Formatting.WHITE))
+            );
+        }
+
+        if (traderSoundNotification.get() && mc.world != null && mc.player != null) {
+            mc.world.playSoundFromEntity(mc.player, mc.player, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP,
+                SoundCategory.AMBIENT, 3.0F, 1.0F);
+        }
+    }
+
     private void scanChunk(WorldChunk chunk) {
         if (chunk == null) return;
-        
+
         try {
             if (enableKelp.get()) scanChunkForKelp(chunk);
             if (enableVine.get()) scanChunkForVines(chunk);
@@ -537,6 +687,11 @@ public class AdvancedESPPlus extends Module {
                     event.renderer.box(pos, stoneSide, stoneLines, stoneShapeMode.get(), 0);
                 }
             }
+
+            // Render Wandering Trader ESP
+            if (enableWanderingTrader.get()) {
+                handleWanderingTraderRendering(event);
+            }
         } catch (Exception e) {
             error("Render error: " + e.getMessage());
         }
@@ -587,6 +742,39 @@ public class AdvancedESPPlus extends Module {
         }
     }
 
+    private void handleWanderingTraderRendering(Render3DEvent event) {
+        // Render tracers to all detected traders
+        for (Integer id : new HashSet<>(detectedTraders)) {
+            Entity entity = mc.world.getEntityById(id);
+            if (entity instanceof WanderingTraderEntity trader) {
+                renderTraderTracer(event, trader, new Color(traderTracerColor.get()));
+            }
+        }
+
+        // Render tracers to all detected llamas
+        for (Integer id : new HashSet<>(detectedLlamas)) {
+            Entity entity = mc.world.getEntityById(id);
+            if (entity instanceof TraderLlamaEntity llama) {
+                renderTraderTracer(event, llama, new Color(llamaTracerColor.get()));
+            }
+        }
+    }
+
+    private void renderTraderTracer(Render3DEvent event, Entity entity, Color color) {
+        double x = entity.prevX + (entity.getX() - entity.prevX) * event.tickDelta;
+        double y = entity.prevY + (entity.getY() - entity.prevY) * event.tickDelta;
+        double z = entity.prevZ + (entity.getZ() - entity.prevZ) * event.tickDelta;
+
+        double height = entity.getBoundingBox().maxY - entity.getBoundingBox().minY;
+        y += height / 2;
+
+        event.renderer.line(
+            RenderUtils.center.x, RenderUtils.center.y, RenderUtils.center.z,
+            x, y, z,
+            color
+        );
+    }
+
     private void handleVillagerDetection(int villagerCount, int zombieVillagerCount) {
         String message = buildDetectionMessage(villagerCount, zombieVillagerCount);
 
@@ -631,8 +819,7 @@ public class AdvancedESPPlus extends Module {
                 bottom = current;
                 length++;
                 current = current.down();
-                
-                // Prevent infinite loops
+
                 if (length > 64) break;
             }
 
@@ -680,7 +867,7 @@ public class AdvancedESPPlus extends Module {
                       "username": "AdvancedESP+",
                       "avatar_url": "https://i.imgur.com/gVzV8ve.jpeg",
                       "embeds": [{
-                        "title": "🏘️ Villager Alert",
+                        "title": " Villager Alert",
                         "description": "%s",
                         "color": 65280,
                         "thumbnail": {"url": "https://i.imgur.com/gVzV8ve.jpeg"},
@@ -729,10 +916,10 @@ public class AdvancedESPPlus extends Module {
         if (enableVillager.get()) total += detectedVillagers.size();
         if (enableVine.get()) total += vineBottoms.size();
         if (enableStone.get()) total += detectedStoneBlocks.size();
+        if (enableWanderingTrader.get()) total += detectedTraders.size() + detectedLlamas.size();
         return total == 0 ? null : String.valueOf(total);
     }
 
-    // Inner Classes
     private static class VineInfo {
         final int length;
         final BlockPos bottomPos;
