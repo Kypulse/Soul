@@ -16,18 +16,19 @@ public class SoulAddon extends MeteorAddon {
     @Override
     public void onInitialize() {
         // Register modules
-        Modules.get().add(new SpawnerProtect());//should work but if not idk sorry
-        Modules.get().add(new AutoSpawnerDeliver());//works
-        Modules.get().add(new AutoAHSniper());//works 
-        Modules.get().add(new AntiTrap());//works but idk if its undetected or not
-        Modules.get().add(new AutoShulker()); //works well and pretty ud
-        Modules.get().add(new CoordFinder());//pretty sure it works
-        Modules.get().add(new HideScoreboard()); //Works great
-        Modules.get().add(new AdvancedESPPlus()); //May remove vine esp but idk 
-        Modules.get().add(new AutoCrystal()); // "Legit Auto crystal" because im lazy to make it rage cheat instead  
-        Modules.get().add(new RotatedDeepslateESP()); //works well
-        Modules.get().add(new GambleBot()); //mostly working
-	Modules.get().add(new SoulTunnler()); //working just need to check to see how ud it is
+        Modules.get().add(new SpawnerProtect());
+        Modules.get().add(new AutoSpawnerDeliver());
+        Modules.get().add(new AutoAHSniper());
+        Modules.get().add(new PanicSell());
+        Modules.get().add(new AntiTrap());
+        Modules.get().add(new AutoShulker());
+        Modules.get().add(new CoordFinder());
+        Modules.get().add(new HideScoreboard());
+        Modules.get().add(new AdvancedESPPlus());
+        Modules.get().add(new AutoCrystal());
+        Modules.get().add(new RotatedDeepslateESP());
+	    Modules.get().add(new GambleBot());
+		Modules.get().add(new SoulTunnler());
 
 
         LOG.info("Soul Addon initialized with {} modules and 3 themes!", Modules.get().getGroup(CATEGORY).size());
