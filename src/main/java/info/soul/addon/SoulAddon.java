@@ -29,6 +29,8 @@ public class SoulAddon extends MeteorAddon {
         Modules.get().add(new RotatedDeepslateESP());
 	    Modules.get().add(new GambleBot());
 		Modules.get().add(new SoulTunnler());
+		Modules.get().add(new AITunneler());
+		Modules.get().add(new HoleTunnelStairsESP());
 
 
         LOG.info("Soul Addon initialized with {} modules and 3 themes!", Modules.get().getGroup(CATEGORY).size());
