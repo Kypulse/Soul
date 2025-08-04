@@ -11,12 +11,11 @@ This repository contains two branches with separate purposes:
 A standalone **Meteor Client Addon** designed for use with the official Meteor Client. Includes advanced modules such as:
 
 - Player ESP
-- Spawner Finder
-- RTP Automation
-- Pathfinding Logic
-- Webhook Integration
+- Hole ESP
+- RTP for good coords
+- Ai Pathfinding Logic
+- Auto Panic AH Sell
 - Name Protection
-- And more...
 
 
 ## 💳 Credit for people i skidded of of
