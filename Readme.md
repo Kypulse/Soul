@@ -17,3 +17,7 @@ A standalone **Meteor Client Addon** designed for use with the official Meteor C
 - Webhook Integration
 - Name Protection
 - And more...
+
+
+## 📂 Credit for people i skidded of of
+[etianl](https://github.com/etianl/Trouser-Streak/blob/main/src/main/java/pwn/noobs/trouserstreak/modules/HoleAndTunnelAndStairsESP.java) For Hole/TUnnel/Stair ESP
