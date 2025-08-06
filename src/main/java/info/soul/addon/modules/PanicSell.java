@@ -45,7 +45,7 @@ public class PanicSell extends Module {
         if (mc.player == null || mc.world == null) return;
 
         if (!sold) {
-            // Find the selected item in inventory
+            
             int inventorySlot = -1;
             for (int i = 9; i < 36; i++) { // 9-35 = main inventory
                 ItemStack stack = mc.player.getInventory().getStack(i);
@@ -61,31 +61,29 @@ public class PanicSell extends Module {
                 return;
             }
 
-            // Move the item to hotbar slot 4 (index 4)
+
             mc.interactionManager.clickSlot(mc.player.currentScreenHandler.syncId, inventorySlot, 4, SlotActionType.SWAP, mc.player);
             
-            // Change selected hotbar slot to 4
+
             mc.player.getInventory().selectedSlot = 4;
             
-            // Send the /ah sell 1b command
+
             ChatUtils.sendPlayerMsg("/ah sell 1b");
             
             sold = true;
             return;
         }
 
-        // After selling, wait for the confirmation GUI
+
         if (sold && mc.currentScreen instanceof GenericContainerScreen screen) {
             ticksSinceGUI++;
             
-            // Wait a few ticks for GUI to stabilize
             if (ticksSinceGUI < 5) {
                 return;
             }
 
             ScreenHandler handler = screen.getScreenHandler();
             
-            // Try slot 15 first (most likely position based on GUI layout)
             Slot confirmSlot = handler.getSlot(15);
             if (confirmSlot != null) {
                 ItemStack stack = confirmSlot.getStack();
@@ -97,13 +95,11 @@ public class PanicSell extends Module {
                 }
             }
             
-            // Fallback: Search through all slots if slot 15 doesn't work
             for (int i = 0; i < handler.slots.size(); i++) {
                 Slot slot = handler.getSlot(i);
                 if (slot != null) {
                     ItemStack stack = slot.getStack();
                     if (!stack.isEmpty() && stack.getItem() == Items.LIME_STAINED_GLASS_PANE) {
-                        // Found the confirmation button - click it
                         mc.interactionManager.clickSlot(handler.syncId, i, 0, SlotActionType.PICKUP, mc.player);
                         ChatUtils.info("PanicSell: Sale confirmed at slot " + i);
                         toggle();
@@ -112,8 +108,7 @@ public class PanicSell extends Module {
                 }
             }
             
-            // Safety timeout
-            if (ticksSinceGUI > 60) { // 3 seconds
+            if (ticksSinceGUI > 60) { 
                 ChatUtils.error("PanicSell: Confirmation timeout.");
                 toggle();
             }
