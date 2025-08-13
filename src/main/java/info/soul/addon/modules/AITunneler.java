@@ -29,12 +29,10 @@ import java.util.List;
 import java.util.Set;
 
 public class AITunneler extends Module {
-
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgSafety = settings.createGroup("Safety");
     private final SettingGroup sgRotation = settings.createGroup("Rotation");
 
-    // Visible settings
     private final Setting<TunnelSize> tunnelSize = sgGeneral.add(new EnumSetting.Builder<TunnelSize>()
         .name("tunnel-size")
         .description("Size of the tunnel to mine.")
@@ -89,7 +87,6 @@ public class AITunneler extends Module {
         .build()
     );
 
-    // Hidden settings with fixed values
     private final Setting<Integer> yLevel = sgGeneral.add(new IntSetting.Builder()
         .name("y-level")
         .description("Maximum Y level to operate at.")
@@ -206,7 +203,6 @@ public class AITunneler extends Module {
         .build()
     );
 
-    // Module components
     private MiningState currentState = MiningState.IDLE;
     private DirectionManager directionManager;
     private PathScanner pathScanner;
@@ -214,7 +210,6 @@ public class AITunneler extends Module {
     private BacktrackManager backtrackManager;
     private RotationController rotationController;
 
-    // Mining tracking
     private int blocksMined = 0;
     private Vec3d lastPos = Vec3d.ZERO;
     private int scanTicks = 0;
@@ -224,17 +219,14 @@ public class AITunneler extends Module {
     private int rotationLockoutTicks = 30;
     private boolean hasCentered = false;
     private boolean packetSentThisTick = false;
-    private BlockPos miningBlock = null; // Track the block being mined
+    private BlockPos miningBlock = null;
 
-    // Centering tracking
     private int centeringTicks = 0;
     private Vec3d centeringTarget = null;
 
-    // Current operation tracking
     private Direction pendingDirection;
     private BacktrackManager.BacktrackPlan currentBacktrackPlan;
 
-    // Stash detection
     private final Set<ChunkPos> processedChunks = new HashSet<>();
 
     public enum TunnelSize {
@@ -272,7 +264,6 @@ public class AITunneler extends Module {
             return;
         }
 
-        // Stop all movement
         resetMovement();
         currentState = MiningState.IDLE;
         blocksMined = 0;
@@ -313,7 +304,7 @@ public class AITunneler extends Module {
             mc.options.rightKey.setPressed(false);
         }
         if (mc.player != null) {
-            mc.player.setVelocity(0, mc.player.getVelocity().y, 0); // Preserve vertical velocity
+            mc.player.setVelocity(0, mc.player.getVelocity().y, 0);
         }
         if (mc.interactionManager != null && miningBlock != null) {
             mc.interactionManager.cancelBlockBreaking();
@@ -378,7 +369,6 @@ public class AITunneler extends Module {
             return;
         }
 
-        // Allow mining to continue if GUI is open and setting is enabled
         if (mc.currentScreen != null && !continueMiningInGUI.get()) {
             resetMovement();
             return;
@@ -543,7 +533,6 @@ public class AITunneler extends Module {
         double moveX = Math.cos(angle) * step;
         double moveZ = Math.sin(angle) * step;
 
-        // Use velocity for GUI compatibility
         if (mc.currentScreen != null && continueMiningInGUI.get()) {
             mc.player.setVelocity(moveX, mc.player.getVelocity().y, moveZ);
             mc.player.swingHand(Hand.MAIN_HAND);
@@ -1080,7 +1069,7 @@ public class AITunneler extends Module {
         private Direction currentDirection;
         private Direction lastMovementDirection;
 
-        public final java.util.Map<Direction, Integer> totalBlocksMined = new java.util.HashMap<>();
+        private final java.util.Map<Direction, Integer> totalBlocksMined = new java.util.HashMap<>();
         private final java.util.Map<Direction, Boolean> activeHazards = new java.util.HashMap<>();
         private final java.util.Map<Direction, Integer> consecutiveHazards = new java.util.HashMap<>();
 
