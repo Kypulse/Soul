@@ -10,13 +10,7 @@ This repository contains two branches with separate purposes:
 
 A standalone **Meteor Client Addon** designed for use with the official Meteor Client. Includes advanced modules such as:
 
-- Player ESP
-- Hole ESP
-- RTP for good coords
-- Ai Pathfinding Logic
-- Auto Panic AH Sell
-- Name Protection
-
-
+- TODO
+- Fix Hotbar
 ## 💳 Credit for people i skidded of of
 For [Hole/TUnnel/Stair ESP](https://github.com/etianl/Trouser-Streak/blob/main/src/main/java/pwn/noobs/trouserstreak/modules/HoleAndTunnelAndStairsESP.java)  i skidded of of Etianl AKA Trouser streak!
