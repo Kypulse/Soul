@@ -1,48 +1,29 @@
-package info.soul.addon.modules;
+package info.soul.addon;
 
 import info.soul.addon.SoulAddon;
-import meteordevelopment.meteorclient.events.world.ChunkDataEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
-import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.entity.*;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.MiningToolItem;
 import net.minecraft.item.ShearsItem;
-import net.minecraft.network.packet.s2c.common.DisconnectS2CPacket;
-import net.minecraft.text.Text;
-import net.minecraft.text.Style;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.Hand;
-
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 public class AITunneler extends Module {
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgSafety = settings.createGroup("Safety");
     private final SettingGroup sgRotation = settings.createGroup("Rotation");
 
-    private final Setting<TunnelSize> tunnelSize = sgGeneral.add(new EnumSetting.Builder<TunnelSize>()
-        .name("tunnel-size")
-        .description("Size of the tunnel to mine.")
-        .defaultValue(TunnelSize.THREE_BY_THREE)
-        .build()
-    );
-
+    // Visible settings
     private final Setting<Integer> scanDepth = sgGeneral.add(new IntSetting.Builder()
-        .name("scan-depth")
-        .description("How many blocks ahead to scan for hazards.")
+        .name("Hazard Detection")
+        .description("How many blocks ahead to Detect for hazards.")
         .defaultValue(6)
         .range(4, 10)
         .sliderRange(4, 10)
@@ -56,46 +37,21 @@ public class AITunneler extends Module {
         .build()
     );
 
-    private final Setting<Boolean> disconnectOnBaseFind = sgGeneral.add(new BoolSetting.Builder()
-        .name("disconnect-on-base-find")
-        .description("Disconnect from server when a base is found.")
+    private final Setting<Boolean> chatFeedback = sgGeneral.add(new BoolSetting.Builder()
+        .name("chat-feedback")
+        .description("Show info and warning messages in chat.")
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Integer> baseThreshold = sgGeneral.add(new IntSetting.Builder()
-        .name("storage block amount")
-        .description("Minimum storage blocks to consider as a base.")
-        .defaultValue(4)
-        .min(1)
-        .max(200)
-        .sliderRange(1, 20)
-        .build()
-    );
-
-    private final Setting<List<BlockEntityType<?>>> storageBlocks = sgGeneral.add(new StorageBlockListSetting.Builder()
-        .name("storage-blocks")
-        .description("Select the storage blocks to search for.")
-        .defaultValue(StorageBlockListSetting.STORAGE_BLOCKS)
-        .build()
-    );
-
-    private final Setting<Boolean> continueMiningInGUI = sgGeneral.add(new BoolSetting.Builder()
-        .name("continue-mining-in-gui")
-        .description("Continue mining when a GUI (e.g., inventory, free cam) is open.")
-        .defaultValue(true)
-        .build()
-    );
-
-    private final Setting<Integer> yLevel = sgGeneral.add(new IntSetting.Builder()
-        .name("y-level")
-        .description("Maximum Y level to operate at.")
-        .defaultValue(-50)
-        .range(-64, -10)
-        .sliderRange(-64, -10)
-        .visible(() -> false)
-        .build()
-    );
+	private final Setting<Integer> yLevel = sgGeneral.add(new IntSetting.Builder()
+		.name("Y Level")
+		.description("Y level to mine at. Manually Mine down to it until the new update comes out!")
+		.defaultValue(-50)
+		.range(-64, 320) 
+		.sliderRange(-64, 50)  
+		.build()
+	);
 
     private final Setting<Integer> scanHeight = sgSafety.add(new IntSetting.Builder()
         .name("scan-height")
@@ -103,26 +59,6 @@ public class AITunneler extends Module {
         .defaultValue(3)
         .range(3, 8)
         .sliderRange(3, 8)
-        .visible(() -> false)
-        .build()
-    );
-
-    private final Setting<Integer> scanWidthFalling = sgSafety.add(new IntSetting.Builder()
-        .name("scan-width-falling")
-        .description("Scan width for falling blocks like gravel.")
-        .defaultValue(1)
-        .range(1, 4)
-        .sliderRange(1, 4)
-        .visible(() -> false)
-        .build()
-    );
-
-    private final Setting<Integer> scanWidthFluids = sgSafety.add(new IntSetting.Builder()
-        .name("scan-width-fluids")
-        .description("Scan width for fluids like lava and water.")
-        .defaultValue(4)
-        .range(2, 6)
-        .sliderRange(2, 6)
         .visible(() -> false)
         .build()
     );
@@ -139,8 +75,8 @@ public class AITunneler extends Module {
 
     private final Setting<Boolean> strictGroundCheck = sgSafety.add(new BoolSetting.Builder()
         .name("strict-ground-check")
-        .description("Require solid ground for entire scan area.")
-        .defaultValue(true)
+        .description("Require solid ground for scan area.")
+        .defaultValue(false)
         .visible(() -> false)
         .build()
     );
@@ -203,12 +139,14 @@ public class AITunneler extends Module {
         .build()
     );
 
+
     private MiningState currentState = MiningState.IDLE;
     private DirectionManager directionManager;
     private PathScanner pathScanner;
     private SafetyValidator safetyValidator;
     private BacktrackManager backtrackManager;
     private RotationController rotationController;
+
 
     private int blocksMined = 0;
     private Vec3d lastPos = Vec3d.ZERO;
@@ -219,35 +157,28 @@ public class AITunneler extends Module {
     private int rotationLockoutTicks = 30;
     private boolean hasCentered = false;
     private boolean packetSentThisTick = false;
-    private BlockPos miningBlock = null;
-
+    private BlockPos miningBlock = null; 
     private int centeringTicks = 0;
     private Vec3d centeringTarget = null;
-
     private Direction pendingDirection;
     private BacktrackManager.BacktrackPlan currentBacktrackPlan;
 
-    private final Set<ChunkPos> processedChunks = new HashSet<>();
-
-    public enum TunnelSize {
-        ONE_BY_ONE,
-        THREE_BY_THREE
-    }
-
     public AITunneler() {
-        super(SoulAddon.CATEGORY, "AI-Tunneler", "Automatically mines bases below Y=-50 with base detection.");
+        super(SoulAddon.CATEGORY, "AITunneler", "Best Undetected  AI for free!");
     }
 
     @Override
     public void onActivate() {
+
+        warning("Works for 1x1 tunnels and maybe amethyst pickaxes (I havent tried yet). Mega beta might get stuck sometimes so just turn it of and back on");
         if (mc.player == null || mc.world == null || !mc.player.isAlive() || mc.player.networkHandler == null || !mc.player.networkHandler.getConnection().isOpen()) {
-            error("Invalid player or server state! Cannot activate module.");
+            senderror("Invalid player or server state! Cannot activate module.");
             toggle();
             return;
         }
 
         if (mc.player.getY() > yLevel.get()) {
-            error("You must be below Y=" + yLevel.get() + " to use this module! Current Y: " + Math.round(mc.player.getY()));
+            senderror("You must be below Y=" + yLevel.get() + " to use this module! Current Y: " + Math.round(mc.player.getY()));
             toggle();
             return;
         }
@@ -259,11 +190,12 @@ public class AITunneler extends Module {
             backtrackManager = new BacktrackManager();
             rotationController = new RotationController();
         } catch (Exception e) {
-            error("Failed to initialize components: " + e.getMessage());
+            senderror("Failed to initialize components: " + e.getMessage());
             toggle();
             return;
         }
 
+        // Stop everything
         resetMovement();
         currentState = MiningState.IDLE;
         blocksMined = 0;
@@ -278,9 +210,9 @@ public class AITunneler extends Module {
         centeringTarget = null;
         packetSentThisTick = false;
         miningBlock = null;
-        processedChunks.clear();
 
-        info("AITunneler activated at Y=" + Math.round(mc.player.getY()) + ". Waiting for initialization...");
+            sendInfo("AITunneler activated at Y=" + Math.round(mc.player.getY()) + ". Waiting for initialization...");
+
     }
 
     @Override
@@ -291,8 +223,8 @@ public class AITunneler extends Module {
             safetyValidator.reset();
         }
         miningBlock = null;
-        processedChunks.clear();
-        info("AITunneler deactivated.");
+            sendInfo("AITunneler deactivated. BeepBoopBop");
+
     }
 
     private void resetMovement() {
@@ -304,7 +236,7 @@ public class AITunneler extends Module {
             mc.options.rightKey.setPressed(false);
         }
         if (mc.player != null) {
-            mc.player.setVelocity(0, mc.player.getVelocity().y, 0);
+            mc.player.setVelocity(0, mc.player.getVelocity().y, 0); // Preserve vertical velocity
         }
         if (mc.interactionManager != null && miningBlock != null) {
             mc.interactionManager.cancelBlockBreaking();
@@ -312,53 +244,22 @@ public class AITunneler extends Module {
         }
     }
 
-    @EventHandler
-    private void onChunkData(ChunkDataEvent event) {
-        if (mc.player == null || mc.world == null || !mc.player.isAlive() || mc.player.getY() > yLevel.get()) return;
-
-        ChunkPos chunkPos = event.chunk().getPos();
-        if (processedChunks.contains(chunkPos)) return;
-
-        StashChunk chunk = new StashChunk(chunkPos);
-        List<BlockEntityType<?>> selectedStorageBlocks = storageBlocks.get();
-
-        for (BlockEntity blockEntity : event.chunk().getBlockEntities().values()) {
-            if (blockEntity instanceof MobSpawnerBlockEntity) {
-                chunk.spawners++;
-            } else if (selectedStorageBlocks.contains(blockEntity.getType())) {
-                if (blockEntity instanceof ChestBlockEntity) {
-                    chunk.chests++;
-                } else if (blockEntity instanceof BarrelBlockEntity) {
-                    chunk.barrels++;
-                } else if (blockEntity instanceof ShulkerBoxBlockEntity) {
-                    chunk.shulkers++;
-                } else if (blockEntity instanceof EnderChestBlockEntity) {
-                    chunk.enderChests++;
-                } else if (blockEntity instanceof AbstractFurnaceBlockEntity) {
-                    chunk.furnaces++;
-                } else if (blockEntity instanceof DispenserBlockEntity || blockEntity instanceof DropperBlockEntity) {
-                    chunk.dispensersDroppers++;
-                } else if (blockEntity instanceof HopperBlockEntity) {
-                    chunk.hoppers++;
-                }
-            }
+    //NNPG's AI Prompt
+    private void sendInfo(String message) {
+        if (chatFeedback.get()) {
+            info(message);
         }
+    }
 
-        int totalStorageBlocks = chunk.getTotal();
-        boolean isBase = false;
-        String foundType = "";
-
-        if (chunk.spawners > 0) {
-            isBase = true;
-            foundType = "spawners";
-        } else if (totalStorageBlocks >= baseThreshold.get()) {
-            isBase = true;
-            foundType = "base";
+    private void sendWarning(String message) {
+        if (chatFeedback.get()) {
+            warning(message);
         }
+    }
 
-        if (isBase) {
-            processedChunks.add(chunkPos);
-            disconnectAndNotify(chunk, foundType);
+    private void senderror(String message) {
+        if (chatFeedback.get()) {
+            error(message);
         }
     }
 
@@ -369,7 +270,8 @@ public class AITunneler extends Module {
             return;
         }
 
-        if (mc.currentScreen != null && !continueMiningInGUI.get()) {
+        // GUI brake 
+        if (mc.currentScreen != null) {
             resetMovement();
             return;
         }
@@ -381,7 +283,7 @@ public class AITunneler extends Module {
         packetSentThisTick = false;
 
         if (mc.player.getY() > yLevel.get()) {
-            error("Moved above Y=" + yLevel.get() + "! Disabling module for safety.");
+            senderror("Moved above Y=" + yLevel.get() + "! Disabling module for safety.");
             toggle();
             return;
         }
@@ -389,7 +291,7 @@ public class AITunneler extends Module {
         if (currentState == MiningState.IDLE && ticksSinceActivation >= 30) {
             currentState = MiningState.CENTERING;
             resetMovement();
-            info("Starting centering phase.");
+            sendInfo("Starting centering phase.");
         }
 
         if (stateTransitionDelay > 0) {
@@ -397,8 +299,7 @@ public class AITunneler extends Module {
             return;
         }
 
-        pathScanner.updateScanWidths(tunnelSize.get() == TunnelSize.ONE_BY_ONE ? 0 : scanWidthFalling.get(), 
-                                    tunnelSize.get() == TunnelSize.ONE_BY_ONE ? 0 : scanWidthFluids.get());
+        pathScanner.updateScanWidths(0, 0);
         rotationController.updateSettings(
             smoothRotation.get(),
             rotationSpeed.get(),
@@ -408,13 +309,13 @@ public class AITunneler extends Module {
         );
 
         if (!safetyValidator.canContinue(mc.player, yLevel.get())) {
-            error("Safety check failed!");
+            senderror("Safety check failed!");
             toggle();
             return;
         }
 
         if (safetyValidator.checkStuck(mc.player)) {
-            error("Player stuck, initiating backtrack");
+            senderror("Player stuck, initiating backtrack");
             resetMovement();
             currentState = MiningState.HAZARD_DETECTED;
             stateTransitionDelay = 3;
@@ -423,7 +324,7 @@ public class AITunneler extends Module {
 
         FindItemResult pickaxe = InvUtils.findInHotbar(this::isTool);
         if (!pickaxe.found()) {
-            error("No pickaxe!");
+            senderror("No pickaxe!");
             toggle();
             return;
         }
@@ -433,7 +334,7 @@ public class AITunneler extends Module {
                 InvUtils.swap(pickaxe.slot(), false);
                 packetSentThisTick = true;
                 stateTransitionDelay = 3;
-                info("Swapped to pickaxe, delaying next action.");
+                sendInfo("Swapped to pickaxe, delaying next action.");
             }
             return;
         }
@@ -476,32 +377,14 @@ public class AITunneler extends Module {
                     stateTransitionDelay = 3;
                 }
                 case ROTATING -> {
-                    currentState = MiningState.SCANNING;
+                    currentState = MiningState.CENTERING;
                     stateTransitionDelay = 3;
                 }
                 case STOPPED -> toggle();
             }
         } catch (Exception e) {
-            error("Error in state machine: " + e.getMessage());
+            senderror("Error in state machine: " + e.getMessage());
             toggle();
-        }
-    }
-
-    private void disconnectAndNotify(StashChunk chunk, String type) {
-        resetMovement();
-        Text message = Text.literal("[Soul] ")
-            .formatted(Formatting.RED)
-            .append(Text.literal(type.equals("spawners") ? "AITunneler Found spawners" : "AITunneler Found base"));
-
-        error(message.getString());
-
-        if (disconnectOnBaseFind.get()) {
-            if (mc.player != null && mc.player.networkHandler != null) {
-                mc.player.networkHandler.onDisconnect(new DisconnectS2CPacket(message));
-            }
-            toggle();
-        } else {
-            info("Base found but disconnect is disabled. Continuing mining...");
         }
     }
 
@@ -524,49 +407,39 @@ public class AITunneler extends Module {
             centeringTarget = null;
             resetMovement();
             packetSentThisTick = true;
-            info("Gradual centering complete.");
+            sendInfo("Gradual centering complete.");
             return;
         }
 
-        double step = Math.min(0.1, distance);
-        double angle = Math.atan2(dz, dx);
-        double moveX = Math.cos(angle) * step;
-        double moveZ = Math.sin(angle) * step;
-
-        if (mc.currentScreen != null && continueMiningInGUI.get()) {
-            mc.player.setVelocity(moveX, mc.player.getVelocity().y, moveZ);
-            mc.player.swingHand(Hand.MAIN_HAND);
-        } else {
-            if (Math.abs(dx) > 0.05) {
-                if (moveX > 0) {
-                    mc.options.rightKey.setPressed(true);
-                    mc.options.leftKey.setPressed(false);
-                } else {
-                    mc.options.leftKey.setPressed(true);
-                    mc.options.rightKey.setPressed(false);
-                }
-            } else {
+        if (Math.abs(dx) > 0.05) {
+            if (dx > 0) {
+                mc.options.rightKey.setPressed(true);
                 mc.options.leftKey.setPressed(false);
+            } else {
+                mc.options.leftKey.setPressed(true);
                 mc.options.rightKey.setPressed(false);
             }
+        } else {
+            mc.options.leftKey.setPressed(false);
+            mc.options.rightKey.setPressed(false);
+        }
 
-            if (Math.abs(dz) > 0.05) {
-                if (moveZ > 0) {
-                    mc.options.forwardKey.setPressed(true);
-                    mc.options.backKey.setPressed(false);
-                } else {
-                    mc.options.backKey.setPressed(true);
-                    mc.options.forwardKey.setPressed(false);
-                }
-            } else {
-                mc.options.forwardKey.setPressed(false);
+        if (Math.abs(dz) > 0.05) {
+            if (dz > 0) {
+                mc.options.forwardKey.setPressed(true);
                 mc.options.backKey.setPressed(false);
+            } else {
+                mc.options.backKey.setPressed(true);
+                mc.options.forwardKey.setPressed(false);
             }
+        } else {
+            mc.options.forwardKey.setPressed(false);
+            mc.options.backKey.setPressed(false);
         }
 
         centeringTicks--;
         packetSentThisTick = true;
-        info("Centering: Moving to (" + targetX + ", " + targetZ + "), ticks left: " + centeringTicks);
+        sendInfo("Centering: Moving to (" + targetX + ", " + targetZ + "), ticks left: " + centeringTicks);
     }
 
     private void handleCentering() {
@@ -576,7 +449,7 @@ public class AITunneler extends Module {
             centeringTicks = 10;
             hasCentered = true;
             lastCenterTick = ticksSinceActivation;
-            info("Starting gradual centering to " + centeringTarget);
+            sendInfo("Starting gradual centering to " + centeringTarget);
             gradualCenterPlayer();
             return;
         }
@@ -591,7 +464,7 @@ public class AITunneler extends Module {
         rotationController.startRotation(targetYaw, () -> {
             backtrackManager.startNewSegment(initialDir, mc.player.getPos());
             currentState = MiningState.SCANNING;
-            info("Rotation complete, starting scan.");
+            sendInfo("Rotation complete, starting scan.");
         });
     }
 
@@ -612,7 +485,7 @@ public class AITunneler extends Module {
             currentDir,
             scanDepth.get(),
             scanHeight.get(),
-            tunnelSize.get() == TunnelSize.THREE_BY_THREE && strictGroundCheck.get()
+            strictGroundCheck.get()
         );
 
         if (result.isSafe()) {
@@ -621,42 +494,28 @@ public class AITunneler extends Module {
             scanTicks = 0;
             lastPos = mc.player.getPos();
             startMining(currentDir);
-            info("Scan complete, starting mining in direction " + currentDir);
+            sendInfo("Scan complete, starting mining in direction " + currentDir);
         } else {
             String hazardName = getHazardName(result.getHazardType());
-            warning(hazardName + " detected, changing direction");
+            sendWarning(hazardName + " detected, changing direction");
             currentState = MiningState.HAZARD_DETECTED;
             resetMovement();
-            info("Movement stopped due to hazard.");
+            sendInfo("Movement stopped due to hazard.");
         }
     }
 
     private void startMining(Direction direction) {
-        double angle = Math.toRadians(directionToYaw(direction));
-        double moveX = Math.cos(angle) * 0.1;
-        double moveZ = Math.sin(angle) * 0.1;
-
-        if (mc.currentScreen != null && continueMiningInGUI.get()) {
-            mc.player.setVelocity(moveX, mc.player.getVelocity().y, moveZ);
-            miningBlock = mc.player.getBlockPos().offset(direction);
-            if (!packetSentThisTick) {
-                mc.interactionManager.attackBlock(miningBlock, direction);
-                mc.player.swingHand(Hand.MAIN_HAND);
-                packetSentThisTick = true;
-            }
-        } else {
-            mc.options.attackKey.setPressed(true);
-            mc.options.forwardKey.setPressed(true);
-            mc.options.backKey.setPressed(false);
-            mc.options.leftKey.setPressed(false);
-            mc.options.rightKey.setPressed(false);
-            miningBlock = mc.player.getBlockPos().offset(direction);
-        }
+        mc.options.attackKey.setPressed(true);
+        mc.options.forwardKey.setPressed(true);
+        mc.options.backKey.setPressed(false);
+        mc.options.leftKey.setPressed(false);
+        mc.options.rightKey.setPressed(false);
+        miningBlock = mc.player.getBlockPos().offset(direction);
     }
 
     private void handleMining() {
         if (mc.player.getY() > yLevel.get()) {
-            error("Moved above Y=" + yLevel.get() + " while mining! Stopping.");
+            senderror("Moved above Y=" + yLevel.get() + " while mining! Stopping.");
             resetMovement();
             toggle();
             return;
@@ -676,30 +535,29 @@ public class AITunneler extends Module {
                 currentDir,
                 scanDepth.get(),
                 scanHeight.get(),
-                tunnelSize.get() == TunnelSize.THREE_BY_THREE && strictGroundCheck.get()
+                strictGroundCheck.get()
             );
 
             if (!result.isSafe() && result.getHazardDistance() <= safetyMargin.get()) {
                 String hazardName = getHazardName(result.getHazardType());
-                warning(hazardName + " detected, changing direction");
+                sendWarning(hazardName + " detected, changing direction");
                 resetMovement();
                 currentState = MiningState.HAZARD_DETECTED;
-                info("Movement stopped due to hazard in mining.");
+                sendInfo("Movement stopped due to hazard in mining.");
                 return;
             }
         }
 
         double distanceMoved = currentPos.distanceTo(lastPos);
-        int blocksPerAction = tunnelSize.get() == TunnelSize.ONE_BY_ONE ? 1 : 9;
         if (distanceMoved >= 0.8) {
-            blocksMined += blocksPerAction;
+            blocksMined += 1; 
             lastPos = currentPos;
 
-            directionManager.recordMovement(blocksPerAction);
+            directionManager.recordMovement(1);
             backtrackManager.recordMovement();
         }
 
-        if (blocksMined >= (tunnelSize.get() == TunnelSize.ONE_BY_ONE ? 1 : 3)) {
+        if (blocksMined >= 1) {
             resetMovement();
 
             BlockPos playerPos = mc.player.getBlockPos();
@@ -710,41 +568,33 @@ public class AITunneler extends Module {
                 currentDir,
                 scanDepth.get(),
                 scanHeight.get(),
-                tunnelSize.get() == TunnelSize.THREE_BY_THREE && strictGroundCheck.get()
+                strictGroundCheck.get()
             );
 
             if (!result.isSafe() && result.getHazardDistance() <= safetyMargin.get()) {
                 String hazardName = getHazardName(result.getHazardType());
-                warning(hazardName + " detected, changing direction");
+                sendWarning(hazardName + " detected, changing direction");
                 currentState = MiningState.HAZARD_DETECTED;
-                info("Movement stopped due to hazard in mining check.");
+                sendInfo("Movement stopped due to hazard in mining check.");
                 return;
             }
 
             blocksMined = 0;
             scanTicks = 0;
             startMining(currentDir);
-            if (mc.currentScreen != null && continueMiningInGUI.get() && miningBlock != null && !packetSentThisTick) {
-                mc.interactionManager.updateBlockBreakingProgress(miningBlock, directionManager.getCurrentDirection());
-                mc.player.swingHand(Hand.MAIN_HAND);
-                packetSentThisTick = true;
-            }
-            info("Continuing mining in direction " + currentDir);
-        } else if (mc.currentScreen != null && continueMiningInGUI.get() && miningBlock != null && !packetSentThisTick) {
-            mc.interactionManager.updateBlockBreakingProgress(miningBlock, directionManager.getCurrentDirection());
-            mc.player.swingHand(Hand.MAIN_HAND);
-            packetSentThisTick = true;
+            sendInfo("Continuing mining in direction " + currentDir);
         }
     }
 
     private void handleHazardDetected() {
         resetMovement();
 
+
         if (ticksSinceActivation - lastCenterTick >= 30 && isPlayerOffCenter()) {
             centeringTarget = new Vec3d(Math.floor(mc.player.getX()) + 0.5, mc.player.getY(), Math.floor(mc.player.getZ()) + 0.5);
             centeringTicks = 10;
             lastCenterTick = ticksSinceActivation;
-            info("Starting gradual centering for hazard handling.");
+            sendInfo("Starting gradual centering for hazard handling.");
             gradualCenterPlayer();
             return;
         }
@@ -758,7 +608,7 @@ public class AITunneler extends Module {
             Direction mainTunnel = directionManager.getMainTunnel();
             currentBacktrackPlan = backtrackManager.createBacktrackPlan(mainTunnel, backtrackDistance.get());
 
-            info("Backtracking and trying again");
+            sendInfo("Backtracking and trying again");
 
             if (currentBacktrackPlan.needsRetrace) {
                 float targetYaw = directionToYaw(currentBacktrackPlan.retraceDirection);
@@ -768,17 +618,11 @@ public class AITunneler extends Module {
                     currentState = MiningState.RETRACING;
                     backtrackManager.startRetrace(currentBacktrackPlan.retraceDistance);
                     lastPos = mc.player.getPos();
-                    if (mc.currentScreen != null && continueMiningInGUI.get()) {
-                        double angle = Math.toRadians(directionToYaw(currentBacktrackPlan.retraceDirection));
-                        mc.player.setVelocity(Math.cos(angle) * 0.1, mc.player.getVelocity().y, Math.sin(angle) * 0.1);
-                        mc.player.swingHand(Hand.MAIN_HAND);
-                    } else {
-                        mc.options.forwardKey.setPressed(true);
-                        mc.options.backKey.setPressed(false);
-                        mc.options.leftKey.setPressed(false);
-                        mc.options.rightKey.setPressed(false);
-                    }
-                    info("Starting retrace in direction " + currentBacktrackPlan.retraceDirection);
+                    mc.options.forwardKey.setPressed(true);
+                    mc.options.backKey.setPressed(false);
+                    mc.options.leftKey.setPressed(false);
+                    mc.options.rightKey.setPressed(false);
+                    sendInfo("Starting retrace in direction " + currentBacktrackPlan.retraceDirection);
                 });
             } else {
                 startBacktrack();
@@ -787,7 +631,7 @@ public class AITunneler extends Module {
         }
 
         if (choice.direction == null) {
-            error("No safe directions found!");
+            senderror("No safe directions found!");
             currentState = MiningState.STOPPED;
             return;
         }
@@ -799,8 +643,10 @@ public class AITunneler extends Module {
 
         rotationController.startRotation(targetYaw, () -> {
             backtrackManager.startNewSegment(pendingDirection, mc.player.getPos());
-            currentState = MiningState.SCANNING;
-            info("Rotation complete, starting scan in direction " + pendingDirection);
+
+            currentState = MiningState.CENTERING;
+            hasCentered = false; 
+            sendInfo("Rotation complete, centering before scanning in direction " + pendingDirection);
         });
     }
 
@@ -812,17 +658,11 @@ public class AITunneler extends Module {
             currentState = MiningState.BACKTRACKING;
             backtrackManager.startBacktrack(currentBacktrackPlan.backtrackDistance);
             lastPos = mc.player.getPos();
-            if (mc.currentScreen != null && continueMiningInGUI.get()) {
-                double angle = Math.toRadians(directionToYaw(currentBacktrackPlan.backtrackDirection));
-                mc.player.setVelocity(Math.cos(angle) * 0.1, mc.player.getVelocity().y, Math.sin(angle) * 0.1);
-                mc.player.swingHand(Hand.MAIN_HAND);
-            } else {
-                mc.options.forwardKey.setPressed(true);
-                mc.options.backKey.setPressed(false);
-                mc.options.leftKey.setPressed(false);
-                mc.options.rightKey.setPressed(false);
-            }
-            info("Starting backtrack in direction " + currentBacktrackPlan.backtrackDirection);
+            mc.options.forwardKey.setPressed(true);
+            mc.options.backKey.setPressed(false);
+            mc.options.leftKey.setPressed(false);
+            mc.options.rightKey.setPressed(false);
+            sendInfo("Starting backtrack in direction " + currentBacktrackPlan.backtrackDirection);
         });
     }
 
@@ -835,7 +675,7 @@ public class AITunneler extends Module {
 
             if (backtrackManager.updateRetrace()) {
                 resetMovement();
-                info("Retrace complete, starting backtrack.");
+                sendInfo("Retrace complete, starting backtrack.");
                 startBacktrack();
             }
         }
@@ -850,7 +690,7 @@ public class AITunneler extends Module {
 
             if (backtrackManager.updateBacktrack()) {
                 resetMovement();
-                info("Backtrack complete.");
+                sendInfo("Backtrack complete.");
 
                 backtrackManager.reset();
                 directionManager.markBacktrackComplete();
@@ -858,7 +698,7 @@ public class AITunneler extends Module {
                 DirectionManager.DirectionChoice choice = directionManager.getNextDirection();
 
                 if (choice.direction == null) {
-                    error("No safe directions found after backtracking!");
+                    senderror("No safe directions found after backtracking!");
                     currentState = MiningState.STOPPED;
                     return;
                 }
@@ -870,8 +710,9 @@ public class AITunneler extends Module {
 
                 rotationController.startRotation(targetYaw, () -> {
                     backtrackManager.startNewSegment(pendingDirection, mc.player.getPos());
-                    currentState = MiningState.SCANNING;
-                    info("Rotation complete, starting scan in direction " + pendingDirection);
+                    currentState = MiningState.CENTERING;
+                    hasCentered = false; 
+                    sendInfo("Rotation complete, centering before scanning in direction " + pendingDirection);
                 });
             }
         }
@@ -916,29 +757,6 @@ public class AITunneler extends Module {
         RETRACING,
         BACKTRACKING,
         STOPPED
-    }
-
-    private static class StashChunk {
-        public final int x;
-        public final int z;
-        public int chests = 0;
-        public int barrels = 0;
-        public int shulkers = 0;
-        public int enderChests = 0;
-        public int furnaces = 0;
-        public int dispensersDroppers = 0;
-        public int hoppers = 0;
-        public int spawners = 0;
-
-        public StashChunk(ChunkPos pos) {
-            this.x = pos.x * 16;
-            this.z = pos.z * 16;
-        }
-
-        public int getTotal() {
-            return chests + barrels + shulkers + enderChests + furnaces +
-                dispensersDroppers + hoppers + spawners;
-        }
     }
 
     private class BacktrackManager {
@@ -1069,7 +887,7 @@ public class AITunneler extends Module {
         private Direction currentDirection;
         private Direction lastMovementDirection;
 
-        private final java.util.Map<Direction, Integer> totalBlocksMined = new java.util.HashMap<>();
+        public final java.util.Map<Direction, Integer> totalBlocksMined = new java.util.HashMap<>();
         private final java.util.Map<Direction, Boolean> activeHazards = new java.util.HashMap<>();
         private final java.util.Map<Direction, Integer> consecutiveHazards = new java.util.HashMap<>();
 
@@ -1260,8 +1078,8 @@ public class AITunneler extends Module {
     }
 
     private class PathScanner {
-        private int scanWidthFallingBlocks = 2;
-        private int scanWidthFluids = 4;
+        private int scanWidthFallingBlocks = 0; 
+        private int scanWidthFluids = 0; 
 
         public void updateScanWidths(int fallingBlocks, int fluids) {
             this.scanWidthFallingBlocks = fallingBlocks;
@@ -1294,7 +1112,7 @@ public class AITunneler extends Module {
         }
 
         public ScanResult scanDirection(BlockPos start, Direction direction, int depth, int height, boolean strictGround) {
-            int scanWidth = strictGround ? Math.max(scanWidthFallingBlocks, scanWidthFluids) : 0;
+            int scanWidth = 0;
 
             for (int forward = 1; forward <= depth; forward++) {
                 for (int sideways = -scanWidth; sideways <= scanWidth; sideways++) {
@@ -1307,8 +1125,7 @@ public class AITunneler extends Module {
                             return new ScanResult(false, fluidHazard, forward);
                         }
 
-                        boolean checkFalling = Math.abs(sideways) <= scanWidthFallingBlocks;
-                        HazardType hazard = checkBlock(checkPos, vertical, strictGround, forward, sideways, checkFalling);
+                        HazardType hazard = checkBlock(checkPos, vertical, strictGround, forward, sideways, true);
                         if (hazard != HazardType.NONE) {
                             return new ScanResult(false, hazard, forward);
                         }
@@ -1322,13 +1139,13 @@ public class AITunneler extends Module {
         private HazardType checkForFluids(net.minecraft.block.BlockState state) {
             net.minecraft.block.Block block = state.getBlock();
 
-            if (block == net.minecraft.block.Blocks.LAVA || 
+            if (block == net.minecraft.block.Blocks.LAVA ||
                 state.getFluidState().getFluid() == net.minecraft.fluid.Fluids.LAVA ||
                 state.getFluidState().getFluid() == net.minecraft.fluid.Fluids.FLOWING_LAVA) {
                 return HazardType.LAVA;
             }
 
-            if (block == net.minecraft.block.Blocks.WATER || 
+            if (block == net.minecraft.block.Blocks.WATER ||
                 state.getFluidState().getFluid() == net.minecraft.fluid.Fluids.WATER ||
                 state.getFluidState().getFluid() == net.minecraft.fluid.Fluids.FLOWING_WATER) {
                 return HazardType.WATER;
@@ -1341,7 +1158,7 @@ public class AITunneler extends Module {
             net.minecraft.block.BlockState state = mc.world.getBlockState(pos);
             net.minecraft.block.Block block = state.getBlock();
 
-            if (yOffset == -1 && (sidewaysDist == 0 || strictGround)) {
+            if (yOffset == -1 && sidewaysDist == 0) {
                 if (!canWalkOn(pos, state)) {
                     return HazardType.UNSAFE_GROUND;
                 }
@@ -1363,8 +1180,8 @@ public class AITunneler extends Module {
             if (!state.isSolidBlock(mc.world, pos)) return false;
 
             net.minecraft.block.Block block = state.getBlock();
-            if (block == net.minecraft.block.Blocks.MAGMA_BLOCK || 
-                block == net.minecraft.block.Blocks.CAMPFIRE || 
+            if (block == net.minecraft.block.Blocks.MAGMA_BLOCK ||
+                block == net.minecraft.block.Blocks.CAMPFIRE ||
                 block == net.minecraft.block.Blocks.SOUL_CAMPFIRE) {
                 return false;
             }
@@ -1442,7 +1259,7 @@ public class AITunneler extends Module {
                 if (!packetSentThisTick) {
                     setYawAngle(targetYaw);
                     packetSentThisTick = true;
-                    info("Instant rotation to yaw " + targetYaw);
+                    sendInfo("Instant rotation to yaw " + targetYaw);
                     if (callback != null) callback.run();
                 }
                 return;
@@ -1461,7 +1278,7 @@ public class AITunneler extends Module {
                 overshootAmount = 0;
                 overshootTicks = 0;
             }
-            info("Starting smooth rotation to yaw " + targetYaw);
+            sendInfo("Starting smooth rotation to yaw " + targetYaw);
         }
 
         public void update() {
@@ -1483,7 +1300,7 @@ public class AITunneler extends Module {
                 setYawAngle(targetYaw);
                 isRotating = false;
                 packetSentThisTick = true;
-                info("Rotation complete to yaw " + targetYaw);
+                sendInfo("Rotation complete to yaw " + targetYaw);
                 if (callback != null) {
                     callback.run();
                 }
@@ -1524,13 +1341,13 @@ public class AITunneler extends Module {
             currentYaw += step + jitter;
             setYawAngle(currentYaw);
             packetSentThisTick = true;
-            info("Rotating: current yaw " + currentYaw + ", target " + targetYaw);
+            sendInfo("Rotating: current yaw " + currentYaw + ", target " + targetYaw);
 
             if (distance < 0.5f || (overshootTicks == 0 && distance < 1.5)) {
                 setYawAngle(targetYaw);
                 isRotating = false;
                 packetSentThisTick = true;
-                info("Rotation complete to yaw " + targetYaw);
+                sendInfo("Rotation complete to yaw " + targetYaw);
                 if (callback != null) {
                     callback.run();
                 }
