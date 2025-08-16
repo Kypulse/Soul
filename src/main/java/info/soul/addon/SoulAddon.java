@@ -16,22 +16,25 @@ public class SoulAddon extends MeteorAddon {
     @Override
     public void onInitialize() {
         // Register modules
-        Modules.get().add(new SpawnerProtect());
-        Modules.get().add(new AutoSpawnerDeliver());
-        Modules.get().add(new AutoAHSniper());
         Modules.get().add(new PanicSell());
         Modules.get().add(new AntiTrap());
         Modules.get().add(new AutoShulker());
         Modules.get().add(new CoordFinder());
         Modules.get().add(new HideScoreboard());
         Modules.get().add(new AdvancedESPPlus());
-        Modules.get().add(new AutoCrystal());
         Modules.get().add(new RotatedDeepslateESP());
 	    Modules.get().add(new GambleBot());
-		Modules.get().add(new SoulTunnler());
-		Modules.get().add(new AITunneler());
 		Modules.get().add(new HoleTunnelStairsESP());
-
+		Modules.get().add(new PearlTrajectory());
+		
+		
+		//Auto
+		Modules.get().add(new AITunneler());
+		Modules.get().add(new AIDigger());
+        Modules.get().add(new AutoCrystal());
+		Modules.get().add(new SpawnerProtect());
+        Modules.get().add(new AutoSpawnerDeliver());
+        Modules.get().add(new AutoAHSniper());
 
         LOG.info("Soul Addon initialized with {} modules and 3 themes!", Modules.get().getGroup(CATEGORY).size());
     }
